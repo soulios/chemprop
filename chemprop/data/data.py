@@ -62,7 +62,7 @@ class MoleculeDatapoint:
                  bond_targets: List[Optional[float]] = None,
                  row: OrderedDict = None,
                  data_weight: float = None,
-                 molecular_weight:float = None,
+                 molecular_weight: float = None,
                  gt_targets: List[bool] = None,
                  lt_targets: List[bool] = None,
                  features: np.ndarray = None,
@@ -188,7 +188,15 @@ class MoleculeDatapoint:
         return mol
     @property
     def molecular_weight(self) -> float:
-        return Chem.rdMolDescriptors.CalcExactMolWt(self.mol)
+        """
+        Gets the molecular weight of the first molecule in the :class:`MoleculeDatapoint`.
+
+        :return: The molecular weight.
+        """
+        mol_weight = 0.0
+        for mol in self.mol:
+            mol_weight += Chem.rdMolDescriptors.CalcExactMolWt(mol)
+        return mol_weight
     @property
     def number_of_molecules(self) -> int:
         """

@@ -1,7 +1,7 @@
 from typing import List
 import numpy as np
 
-from chemprop_repo.chemprop.data import MoleculeDataset
+from dfpl_chemprop.chemprop.data import MoleculeDataset
 
 
 def reshape_values(

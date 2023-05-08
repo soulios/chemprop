@@ -659,8 +659,7 @@ def get_inequality_targets(path: str, target_columns: List[str] = None) -> List[
 
 def weight_split(data: MoleculeDataset,
                  bias: str,
-                 sizes: Tuple[float, float, float] = (0.8, 0, 0.2),
-                 seed: int = 0) -> Tuple[MoleculeDataset, MoleculeDataset, MoleculeDataset]:
+                 sizes: Tuple[float, float, float] = (0.8, 0, 0.2)) -> Tuple[MoleculeDataset, MoleculeDataset, MoleculeDataset]:
     """
     Splits a MoleculeDataset by molecular weight so that the largest or smallest molecules are in the train set.
 
@@ -683,10 +682,7 @@ def weight_split(data: MoleculeDataset,
     else:
         raise ValueError("Wrong bias, choose small or big")
 
-    # Split indices
     indices = list(range(len(sorted_data)))
-    random = Random(seed)
-    random.shuffle(indices)
 
     train_end_idx = int(train_size)
     val_end_idx = int(train_size + val_size)
@@ -703,7 +699,7 @@ def weight_split(data: MoleculeDataset,
 
 def split_data(data: MoleculeDataset,
                split_type: str = 'random',
-               sizes: Tuple[float, float, float] = (0.8, 0.1, 0.1),
+               sizes: Tuple[float, float, float] = (0.8, 0, 0.2),
                key_molecule_index: int = 0,
                seed: int = 0,
                num_folds: int = 1,
@@ -863,7 +859,7 @@ def split_data(data: MoleculeDataset,
 
         return MoleculeDataset(train), MoleculeDataset(val), MoleculeDataset(test)
     elif split_type == 'molecular_weight':
-        train, val, test = weight_split(data, bias='small', sizes=sizes, seed=seed)
+        train, val, test = weight_split(data, bias='small', sizes=sizes)
         return train, val, test
     else:
         raise ValueError(f'split_type "{split_type}" not supported.')

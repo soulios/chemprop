@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Iterator, List
 
 import numpy as np
-from chemprop_repo.chemprop.data.data import MoleculeDataLoader
+from dfpl_chemprop.chemprop.data.data import MoleculeDataLoader
 from scipy.special import erfinv, softmax, logit, expit
 from scipy.optimize import fmin
 from scipy.stats import t

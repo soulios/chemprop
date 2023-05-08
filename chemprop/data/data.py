@@ -6,6 +6,7 @@ from typing import Dict, Iterator, List, Optional, Union, Tuple
 import numpy as np
 from torch.utils.data import DataLoader, Dataset, Sampler
 from rdkit import Chem
+from rdkit.Chem import rdMolDescriptors
 
 from .scaler import StandardScaler, AtomBondScaler
 from chemprop.features import get_features_generator
@@ -61,6 +62,7 @@ class MoleculeDatapoint:
                  bond_targets: List[Optional[float]] = None,
                  row: OrderedDict = None,
                  data_weight: float = None,
+                 molecular_weight:float = None,
                  gt_targets: List[bool] = None,
                  lt_targets: List[bool] = None,
                  features: np.ndarray = None,
@@ -183,9 +185,10 @@ class MoleculeDatapoint:
         if cache_mol():
             for s, m in zip(self.smiles, mol):
                 SMILES_TO_MOL[s] = m
-
         return mol
-
+    @property
+    def molecular_weight(self) -> float:
+        return Chem.rdMolDescriptors.CalcExactMolWt(self.mol)
     @property
     def number_of_molecules(self) -> int:
         """
@@ -328,6 +331,15 @@ class MoleculeDataset(Dataset):
             return [mol for d in self._data for mol in d.mol]
 
         return [d.mol for d in self._data]
+
+    @property
+    def molecular_weight(self) -> List[float]:
+        """
+        Gets the molecular weight of each :class:`MoleculeDatapoint`.
+
+        :return: A list of molecular weights.
+        """
+        return [rdMolDescriptors.CalcExactMolWt(m) for m in self.mols(flatten=True)]
 
     @property
     def number_of_molecules(self) -> int:

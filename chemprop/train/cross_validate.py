@@ -143,8 +143,8 @@ def cross_validate(args: TrainArgs,
             plt.plot(group["epoch"], group["score"], label=f"{set_} {metric}",
                      linestyle=line_styles[set_], color=color_dict[metric])
             plt.xlabel("epoch")
-            plt.ylabel("score")
-            plt.legend()
+            plt.ylabel("metric score")
+            plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
             plt.savefig(f"{args.save_dir}/scores_and_metrics_fold_{fold_num}.png")
 
     all_scores = dict(all_scores)

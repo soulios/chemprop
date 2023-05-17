@@ -9,9 +9,7 @@ from chemprop.data import MoleculeDataLoader, StandardScaler, AtomBondScaler
 from chemprop.models import MoleculeModel
 from chemprop.train import get_metric_func
 from sklearn.metrics import auc,roc_curve
-import sys
-sys.path.insert(0, "dfpl")
-from dfpl.plot import plot_auc
+
 
 def evaluate_predictions(preds: List[List[float]],
                          targets: List[List[float]],
@@ -106,7 +104,6 @@ def evaluate_predictions(preds: List[List[float]],
                     results[metric].append(auc_value)
                     # plot_data = pd.DataFrame({"fpr": fpr, "tpr": tpr, "auc_value": auc_value})
                     # plot_data.to_csv(os.path.join(args.save_dir,f"roc_curve_{i}.csv"), index=False)
-                    plot_auc(fpr, tpr, auc_value, target=f"Task {i}", filename=f"roc_curve_{i}.png", wandb_logging=True)
                 else:
                     results[metric].append(metric_func(valid_targets[i], valid_preds[i]))
 

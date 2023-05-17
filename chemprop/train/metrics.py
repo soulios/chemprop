@@ -1,13 +1,14 @@
 from typing import List, Callable, Union
 
+import matplotlib.pyplot as plt
 from tqdm import trange
 import torch
 import numpy as np
 import torch.nn as nn
-
+import csv
 from sklearn.metrics import auc, mean_absolute_error, mean_squared_error, precision_recall_curve, r2_score,\
-    roc_auc_score, accuracy_score, log_loss, f1_score, matthews_corrcoef
-
+    roc_auc_score, accuracy_score, log_loss, f1_score, matthews_corrcoef, confusion_matrix
+import seaborn as sns
 
 def get_metric_func(metric: str) -> Callable[[Union[List[int], List[float]], List[float]], float]:
     r"""
@@ -81,8 +82,39 @@ def get_metric_func(metric: str) -> Callable[[Union[List[int], List[float]], Lis
     if metric == 'wasserstein':
         return wasserstein_metric
 
+    if metric == 'recall':
+        return recall
+    if metric == 'specificity':
+        return specificity
+    if metric == 'confusion_matrix':
+        return cfm
+    if metric == 'precision':
+        return precision
     raise ValueError(f'Metric "{metric}" not supported.')
 
+def precision(targets: List[int], preds: Union[List[float], List[List[float]]], threshold: float = 0.5) -> float:
+    """
+    Computes the precision of a binary prediction task using a given threshold for generating hard predictions.
+
+    Will calculate for a multiclass prediction task by picking the largest probability.
+
+    :param targets: A list of binary targets.
+    :param preds: A list of prediction probabilities.
+    :param threshold: The threshold above which a prediction is a 1 and below which (inclusive) a prediction is a 0.
+    :return: The computed precision.
+    """
+    if type(preds[0]) == list:  # multiclass
+        hard_preds = [p.index(max(p)) for p in preds]
+        tp = sum([1 for t, p in zip(targets, hard_preds) if t == p])
+        fp = sum([1 for t, p in zip(targets, hard_preds) if t != p])
+        score = tp / (tp + fp) if tp + fp != 0 else 0.0
+    else:  # binary prediction
+        hard_preds = [1 if p > threshold else 0 for p in preds]
+        tp = sum([1 for t, p in zip(targets, hard_preds) if t == p == 1])
+        fp = sum([1 for t, p in zip(targets, hard_preds) if t == 0 and p == 1])
+        score = tp / (tp + fp) if tp + fp != 0 else 0.0
+
+    return score
 
 def prc_auc(targets: List[int], preds: List[float]) -> float:
     """
@@ -239,10 +271,67 @@ def f1_metric(targets: List[int], preds: Union[List[float], List[List[float]]], 
     else: # binary prediction
         hard_preds = [1 if p > threshold else 0 for p in preds]  
         score = f1_score(targets, hard_preds)
+    # Save the target labels and predicted labels in the current fold's folder
+    return score
+def cfm(targets: List[int], preds: List[int], labels: List[str]):
+    """
+    Plots the confusion matrix based on the target and predicted values.
+
+    :param targets: A list of target labels.
+    :param preds: A list of predicted labels.
+    :param labels: A list of class labels.
+    """
+    hard_preds = [1 if p > 0.5 else 0 for p in preds]
+
+    return  targets, hard_preds
+
+def recall(targets: List[int], preds: Union[List[float], List[List[float]]], threshold: float = 0.5) -> float:
+    """
+    Computes the recall (true positive rate) of a binary prediction task using a given threshold for generating hard predictions.
+
+    Will calculate for a multiclass prediction task by picking the largest probability.
+
+    :param targets: A list of binary targets.
+    :param preds: A list of prediction probabilities.
+    :param threshold: The threshold above which a prediction is a 1 and below which (inclusive) a prediction is a 0.
+    :return: The computed recall.
+    """
+    if type(preds[0]) == list:  # multiclass
+        hard_preds = [p.index(max(p)) for p in preds]
+        tp = sum([1 for t, p in zip(targets, hard_preds) if t == p])
+        fn = sum([1 for t, p in zip(targets, hard_preds) if t != p])
+        score = tp / (tp + fn)
+    else:  # binary prediction
+        hard_preds = [1 if p > threshold else 0 for p in preds]
+        tp = sum([1 for t, p in zip(targets, hard_preds) if t == p == 1])
+        fn = sum([1 for t, p in zip(targets, hard_preds) if t == 1 and p == 0])
+        score = tp / (tp + fn)
 
     return score
 
+def specificity(targets: List[int], preds: Union[List[float], List[List[float]]], threshold: float = 0.5) -> float:
+    """
+    Computes the specificity (true negative rate) of a binary prediction task using a given threshold for generating hard predictions.
 
+    Will calculate for a multiclass prediction task by picking the largest probability.
+
+    :param targets: A list of binary targets.
+    :param preds: A list of prediction probabilities.
+    :param threshold: The threshold above which a prediction is a 1 and below which (inclusive) a prediction is a 0.
+    :return: The computed specificity.
+    """
+    if type(preds[0]) == list:  # multiclass
+        hard_preds = [p.index(max(p)) for p in preds]
+        tn = sum([1 for t, p in zip(targets, hard_preds) if t != p])
+        fp = sum([1 for t, p in zip(targets, hard_preds) if t == p])
+        score = tn / (tn + fp)
+    else:  # binary prediction
+        hard_preds = [1 if p > threshold else 0 for p in preds]
+        tn = sum([1 for t, p in zip(targets, hard_preds) if t == p == 0])
+        fp = sum([1 for t, p in zip(targets, hard_preds) if t == 0 and p == 1])
+        score = tn / (tn + fp)
+
+    return score
 def mcc_metric(targets: List[int], preds: Union[List[float], List[List[float]]], threshold: float = 0.5) -> float:
     """
     Computes the Matthews Correlation Coefficient of a binary prediction task using a given threshold for generating hard predictions.

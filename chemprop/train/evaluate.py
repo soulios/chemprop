@@ -1,7 +1,7 @@
 from collections import defaultdict
 import logging
 from typing import Dict, List
-
+import csv
 import numpy as np
 
 from .predict import predict
@@ -111,7 +111,6 @@ def evaluate_predictions(preds: List[List[float]],
                     results[metric].append(metric_func(valid_targets[i], valid_preds[i]))
 
     results = dict(results)
-
     return results
 
 

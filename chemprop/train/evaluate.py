@@ -89,7 +89,16 @@ def evaluate_predictions(preds: List[List[float]],
 
             if len(valid_targets[i]) == 0:
                 continue
+            # Calculate true positives, false positives, true negatives, false negatives
+            tp = sum((t == 1 and p >= 0.5) for t, p in zip(valid_targets[i], valid_preds[i]))
+            fp = sum((t == 0 and p >= 0.5) for t, p in zip(valid_targets[i], valid_preds[i]))
+            tn = sum((t == 0 and p < 0.5) for t, p in zip(valid_targets[i], valid_preds[i]))
+            fn = sum((t == 1 and p < 0.5) for t, p in zip(valid_targets[i], valid_preds[i]))
 
+            results['true_positives'].append(tp)
+            results['false_positives'].append(fp)
+            results['true_negatives'].append(tn)
+            results['false_negatives'].append(fn)
             for metric, metric_func in metric_to_func.items():
                 if dataset_type == 'multiclass' and metric == 'cross_entropy':
                     results[metric].append(metric_func(valid_targets[i], valid_preds[i],
@@ -102,8 +111,6 @@ def evaluate_predictions(preds: List[List[float]],
                     tpr = tpr.tolist()
                     auc_value = auc(fpr, tpr)
                     results[metric].append(auc_value)
-                    # plot_data = pd.DataFrame({"fpr": fpr, "tpr": tpr, "auc_value": auc_value})
-                    # plot_data.to_csv(os.path.join(args.save_dir,f"roc_curve_{i}.csv"), index=False)
                 else:
                     results[metric].append(metric_func(valid_targets[i], valid_preds[i]))
 
@@ -159,5 +166,4 @@ def evaluate(model: MoleculeModel,
         gt_targets=gt_targets,
         lt_targets=lt_targets,
     )
-
     return results

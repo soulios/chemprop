@@ -1,4 +1,4 @@
-from dfpl_chemprop.chemprop.args import HyperoptArgs
+from chemprop.args import HyperoptArgs
 import os
 import pickle
 from typing import List, Dict

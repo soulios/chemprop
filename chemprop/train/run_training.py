@@ -228,7 +228,7 @@ def run_training(args: TrainArgs,
         seed=args.seed
     )
 
-    train_data_loader_auc = MoleculeDataLoader(
+    train_data_loader_unshuffled = MoleculeDataLoader(
         dataset=train_data,
         batch_size=args.batch_size,
         num_workers=num_workers,
@@ -320,7 +320,7 @@ def run_training(args: TrainArgs,
 
             training_scores = evaluate(
                 model=model,
-                data_loader=train_data_loader_auc,
+                data_loader=train_data_loader_unshuffled,
                 num_tasks=args.num_tasks,
                 metrics=args.metrics,
                 dataset_type=args.dataset_type,

@@ -341,6 +341,8 @@ class TrainArgs(CommonArgs):
     """Dimensionality of hidden layers in MPN."""
     depth: int = 3
     """Number of message passing steps."""
+    dynamic_depth: Optional[Literal['uniform', 'truncnorm']] = None
+    """Sets the depth dynamically"""
     bias_solvent: bool = False
     """Whether to add bias to linear layers for solvent MPN if :code:`reaction_solvent` is True."""
     hidden_size_solvent: int = 300
@@ -769,7 +771,7 @@ class TrainArgs(CommonArgs):
         # Validate split size entry and set default values
         if self.split_sizes is None:
             if self.separate_val_path is None and self.separate_test_path is None: # separate data paths are not provided
-                self.split_sizes = [0.8, 0.1, 0.1]
+                self.split_sizes = [0.8, 0.2, 0.]
             elif self.separate_val_path is not None and self.separate_test_path is None: # separate val path only
                 self.split_sizes = [0.8, 0., 0.2]
             elif self.separate_val_path is None and self.separate_test_path is not None: # separate test path only
@@ -1081,12 +1083,12 @@ class HyperoptArgs(TrainArgs):
         # Construct set of search parameters
         supported_keywords = [
             "basic", "learning_rate", "linked_hidden_size", "all",
-            "activation", "aggregation", "aggregation_norm", "batch_size", "depth",
+            "activation", "aggregation", "aggregation_norm", "batch_size", "depth", "dynamic_depth",
             "dropout", "ffn_hidden_size", "ffn_num_layers", "final_lr", "hidden_size",
             "init_lr", "max_lr", "warmup_epochs"
         ]
         supported_parameters = [
-            "activation", "aggregation", "aggregation_norm", "batch_size", "depth",
+            "activation", "aggregation", "aggregation_norm", "batch_size", "depth", "dynamic_depth"
             "dropout", "ffn_hidden_size", "ffn_num_layers", "final_lr_ratio", "hidden_size",
             "init_lr_ratio", "linked_hidden_size", "max_lr", "warmup_epochs"
         ]

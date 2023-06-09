@@ -87,7 +87,6 @@ def scaffold_split(data: MoleculeDataset,
 
     if balanced:  # Put stuff that's bigger than half the val/test size into train, rest just order randomly
         index_sets = list(scaffold_to_indices.values())
-        print(index_sets)
         big_index_sets = []
         small_index_sets = []
         for index_set in index_sets:

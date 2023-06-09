@@ -104,15 +104,15 @@ def scaffold_split(data: MoleculeDataset,
                             reverse=True)
 
     for index_set in index_sets:
-        if len(train) + len(index_set) <= train_size:
-            train += index_set
-            train_scaffold_count += 1
-        elif len(val) + len(index_set) <= val_size:
-            val += index_set
-            val_scaffold_count += 1
-        else:
+        if len(test) + len(index_set) <= test_size:
             test += index_set
             test_scaffold_count += 1
+        elif len(train) + len(index_set) <= train_size:
+            train += index_set
+            train_scaffold_count += 1
+        else:
+            val += index_set
+            val_scaffold_count += 1
 
     if logger is not None:
         logger.debug(f'Total scaffolds = {len(scaffold_to_indices):,} | '

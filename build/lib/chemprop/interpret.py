@@ -5,9 +5,20 @@ import numpy as np
 from rdkit import Chem
 
 from chemprop.args import InterpretArgs
-from chemprop.data import get_data_from_smiles, get_header, get_smiles, MoleculeDataLoader, MoleculeDataset
+from chemprop.data import (
+    get_data_from_smiles,
+    get_header,
+    get_smiles,
+    MoleculeDataLoader,
+    MoleculeDataset,
+)
 from chemprop.train import predict
 from chemprop.utils import load_args, load_checkpoint, load_scalers, timeit
+
+import pathlib
+from os.path import join as path_join
+import rdkit
+
 
 
 MIN_ATOMS = 15
@@ -25,17 +36,37 @@ class ChempropModel:
         self.train_args = load_args(args.checkpoint_paths[0])
 
         # If features were used during training, they must be used when predicting
-        if ((self.train_args.features_path is not None or self.train_args.features_generator is not None)
-                and args.features_generator is None):
-            raise ValueError('Features were used during training so they must be specified again during prediction '
-                             'using the same type of features as before (with --features_generator <generator> '
-                             'and using --no_features_scaling if applicable).')
+        if (
+            self.train_args.features_path is not None
+            or self.train_args.features_generator is not None
+        ) and args.features_generator is None:
+            raise ValueError(
+                "Features were used during training so they must be specified again during prediction "
+                "using the same type of features as before (with --features_generator <generator> "
+                "and using --no_features_scaling if applicable)."
+            )
 
-        if self.train_args.atom_descriptors_size > 0 or self.train_args.atom_features_size > 0 or self.train_args.bond_descriptors_size > 0 or self.train_args.bond_features_size > 0:
-            raise NotImplementedError('The interpret function does not yet work with additional atom or bond features')
+        if (
+            self.train_args.atom_descriptors_size > 0
+            or self.train_args.atom_features_size > 0
+            or self.train_args.bond_descriptors_size > 0
+            or self.train_args.bond_features_size > 0
+        ):
+            raise NotImplementedError(
+                "The interpret function does not yet work with additional atom or bond features"
+            )
 
-        self.scaler, self.features_scaler, self.atom_descriptor_scaler, self.bond_descriptor_scaler, self.atom_bond_scaler = load_scalers(args.checkpoint_paths[0])
-        self.checkpoints = [load_checkpoint(checkpoint_path, device=args.device) for checkpoint_path in args.checkpoint_paths]
+        (
+            self.scaler,
+            self.features_scaler,
+            self.atom_descriptor_scaler,
+            self.bond_descriptor_scaler,
+            self.atom_bond_scaler,
+        ) = load_scalers(args.checkpoint_paths[0])
+        self.checkpoints = [
+            load_checkpoint(checkpoint_path, device=args.device)
+            for checkpoint_path in args.checkpoint_paths
+        ]
 
     def __call__(self, smiles: List[str], batch_size: int = 500) -> List[List[float]]:
         """
@@ -45,16 +76,32 @@ class ChempropModel:
         :param batch_size: The batch size.
         :return: A list of lists of floats containing the predicted values.
         """
-        test_data = get_data_from_smiles(smiles=smiles, skip_invalid_smiles=False, features_generator=self.args.features_generator)
-        valid_indices = [i for i in range(len(test_data)) if test_data[i].mol is not None]
+        test_data = get_data_from_smiles(
+            smiles=smiles,
+            skip_invalid_smiles=False,
+            features_generator=self.args.features_generator,
+        )
+        valid_indices = [
+            i for i in range(len(test_data)) if test_data[i].mol is not None
+        ]
         test_data = MoleculeDataset([test_data[i] for i in valid_indices])
 
         if self.train_args.features_scaling:
             test_data.normalize_features(self.features_scaler)
-        if self.train_args.atom_descriptor_scaling and self.args.atom_descriptors is not None:
-            test_data.normalize_features(self.atom_descriptor_scaler, scale_atom_descriptors=True)
-        if self.train_args.bond_descriptor_scaling and self.args.bond_descriptors_size > 0:
-            test_data.normalize_features(self.bond_descriptor_scaler, scale_bond_descriptors=True)
+        if (
+            self.train_args.atom_descriptor_scaling
+            and self.args.atom_descriptors is not None
+        ):
+            test_data.normalize_features(
+                self.atom_descriptor_scaler, scale_atom_descriptors=True
+            )
+        if (
+            self.train_args.bond_descriptor_scaling
+            and self.args.bond_descriptors_size > 0
+        ):
+            test_data.normalize_features(
+                self.bond_descriptor_scaler, scale_bond_descriptors=True
+            )
 
         test_data_loader = MoleculeDataLoader(dataset=test_data, batch_size=batch_size)
 
@@ -64,7 +111,7 @@ class ChempropModel:
                 model=model,
                 data_loader=test_data_loader,
                 scaler=self.scaler,
-                disable_progress_bar=True
+                disable_progress_bar=True,
             )
             sum_preds.append(np.array(model_preds))
 
@@ -78,7 +125,9 @@ class ChempropModel:
 class MCTSNode:
     """A :class:`MCTSNode` represents a node in a Monte Carlo Tree Search."""
 
-    def __init__(self, smiles: str, atoms: List[int], W: float = 0, N: int = 0, P: float = 0) -> None:
+    def __init__(
+        self, smiles: str, atoms: List[int], W: float = 0, N: int = 0, P: float = 0
+    ) -> None:
         """
         :param smiles: The SMILES for the substructure at this node.
         :param atoms: A list of atom indices represented by this node.
@@ -130,7 +179,9 @@ def find_clusters(mol: Chem.Mol) -> Tuple[List[Tuple[int, ...]], List[List[int]]
     return clusters, atom_cls
 
 
-def __extract_subgraph(mol: Chem.Mol, selected_atoms: Set[int]) -> Tuple[Chem.Mol, List[int]]:
+def __extract_subgraph(
+    mol: Chem.Mol, selected_atoms: Set[int]
+) -> Tuple[Chem.Mol, List[int]]:
     """
     Extracts a subgraph from an RDKit molecule given a set of atom indices.
 
@@ -152,13 +203,25 @@ def __extract_subgraph(mol: Chem.Mol, selected_atoms: Set[int]) -> Tuple[Chem.Mo
     for atom_idx in roots:
         atom = new_mol.GetAtomWithIdx(atom_idx)
         atom.SetAtomMapNum(1)
-        aroma_bonds = [bond for bond in atom.GetBonds() if bond.GetBondType() == Chem.rdchem.BondType.AROMATIC]
-        aroma_bonds = [bond for bond in aroma_bonds if
-                       bond.GetBeginAtom().GetIdx() in selected_atoms and bond.GetEndAtom().GetIdx() in selected_atoms]
+        aroma_bonds = [
+            bond
+            for bond in atom.GetBonds()
+            if bond.GetBondType() == Chem.rdchem.BondType.AROMATIC
+        ]
+        aroma_bonds = [
+            bond
+            for bond in aroma_bonds
+            if bond.GetBeginAtom().GetIdx() in selected_atoms
+            and bond.GetEndAtom().GetIdx() in selected_atoms
+        ]
         if len(aroma_bonds) == 0:
             atom.SetIsAromatic(False)
 
-    remove_atoms = [atom.GetIdx() for atom in new_mol.GetAtoms() if atom.GetIdx() not in selected_atoms]
+    remove_atoms = [
+        atom.GetIdx()
+        for atom in new_mol.GetAtoms()
+        if atom.GetIdx() not in selected_atoms
+    ]
     remove_atoms = sorted(remove_atoms, reverse=True)
     for atom in remove_atoms:
         new_mol.RemoveAtom(atom)
@@ -200,13 +263,15 @@ def extract_subgraph(smiles: str, selected_atoms: Set[int]) -> Tuple[str, List[i
         return None, None
 
 
-def mcts_rollout(node: MCTSNode,
-                 state_map: Dict[str, MCTSNode],
-                 orig_smiles: str,
-                 clusters: List[Set[int]],
-                 atom_cls: List[Set[int]],
-                 nei_cls: List[Set[int]],
-                 scoring_function: Callable[[List[str]], List[float]]) -> float:
+def mcts_rollout(
+    node: MCTSNode,
+    state_map: Dict[str, MCTSNode],
+    orig_smiles: str,
+    clusters: List[Set[int]],
+    atom_cls: List[Set[int]],
+    nei_cls: List[Set[int]],
+    scoring_function: Callable[[List[str]], List[float]],
+) -> float:
     """
     A Monte Carlo Tree Search rollout from a given :class:`MCTSNode`.
 
@@ -228,7 +293,11 @@ def mcts_rollout(node: MCTSNode,
         cur_cls = set([i for i, x in enumerate(clusters) if x <= cur_atoms])
         for i in cur_cls:
             leaf_atoms = [a for a in clusters[i] if len(atom_cls[a] & cur_cls) == 1]
-            if len(nei_cls[i] & cur_cls) == 1 or len(clusters[i]) == 2 and len(leaf_atoms) == 1:
+            if (
+                len(nei_cls[i] & cur_cls) == 1
+                or len(clusters[i]) == 2
+                and len(leaf_atoms) == 1
+            ):
                 new_atoms = cur_atoms - set(leaf_atoms)
                 new_smiles, _ = extract_subgraph(orig_smiles, new_atoms)
                 if new_smiles in state_map:
@@ -248,18 +317,28 @@ def mcts_rollout(node: MCTSNode,
 
     sum_count = sum(c.N for c in node.children)
     selected_node = max(node.children, key=lambda x: x.Q() + x.U(sum_count))
-    v = mcts_rollout(selected_node, state_map, orig_smiles, clusters, atom_cls, nei_cls, scoring_function)
+    v = mcts_rollout(
+        selected_node,
+        state_map,
+        orig_smiles,
+        clusters,
+        atom_cls,
+        nei_cls,
+        scoring_function,
+    )
     selected_node.W += v
     selected_node.N += 1
 
     return v
 
 
-def mcts(smiles: str,
-         scoring_function: Callable[[List[str]], List[float]],
-         n_rollout: int,
-         max_atoms: int,
-         prop_delta: float) -> List[MCTSNode]:
+def mcts(
+    smiles: str,
+    scoring_function: Callable[[List[str]], List[float]],
+    n_rollout: int,
+    max_atoms: int,
+    prop_delta: float,
+) -> List[MCTSNode]:
     """
     Runs the Monte Carlo Tree Search algorithm.
 
@@ -270,7 +349,7 @@ def mcts(smiles: str,
     :param prop_delta: The minimum required property value for a satisfactory rationale.
     :return: A list of rationales each represented by a :class:`MCTSNode`.
     """
-            
+
     mol = Chem.MolFromSmiles(smiles)
     if mol.GetNumAtoms() > 50:
         n_rollout = 1
@@ -287,11 +366,18 @@ def mcts(smiles: str,
     root = MCTSNode(smiles, set(range(mol.GetNumAtoms())))
     state_map = {smiles: root}
     for _ in range(n_rollout):
-        mcts_rollout(root, state_map, smiles, clusters, atom_cls, nei_cls, scoring_function)
+        mcts_rollout(
+            root, state_map, smiles, clusters, atom_cls, nei_cls, scoring_function
+        )
 
-    rationales = [node for _, node in state_map.items() if len(node.atoms) <= max_atoms and node.P >= prop_delta]
+    rationales = [
+        node
+        for _, node in state_map.items()
+        if len(node.atoms) <= max_atoms and node.P >= prop_delta
+    ]
 
     return rationales
+
 
 @timeit()
 def interpret(args: InterpretArgs) -> None:
@@ -302,8 +388,10 @@ def interpret(args: InterpretArgs) -> None:
     """
 
     if args.number_of_molecules != 1:
-        raise ValueError("Interpreting is currently only available for single-molecule models.")
-    
+        raise ValueError(
+            "Interpreting is currently only available for single-molecule models."
+        )
+
     global C_PUCT, MIN_ATOMS
 
     chemprop_model = ChempropModel(args)
@@ -317,8 +405,10 @@ def interpret(args: InterpretArgs) -> None:
     all_smiles = get_smiles(path=args.data_path, smiles_columns=args.smiles_columns)
     header = get_header(path=args.data_path)
 
-    property_name = header[args.property_id] if len(header) > args.property_id else 'score'
-    print(f'smiles,{property_name},rationale,rationale_score')
+    property_name = (
+        header[args.property_id] if len(header) > args.property_id else "score"
+    )
+    print(f"smiles,{property_name},rationale,rationale_score")
 
     for smiles in all_smiles:
         score = scoring_function([smiles])[0]
@@ -328,18 +418,128 @@ def interpret(args: InterpretArgs) -> None:
                 scoring_function=scoring_function,
                 n_rollout=args.rollout,
                 max_atoms=args.max_atoms,
-                prop_delta=args.prop_delta
+                prop_delta=args.prop_delta,
             )
         else:
             rationales = []
 
         if len(rationales) == 0:
-            print(f'{smiles},{score:.3f},,')
+            print(f"{smiles},{score:.3f},,")
         else:
             min_size = min(len(x.atoms) for x in rationales)
             min_rationales = [x for x in rationales if len(x.atoms) == min_size]
             rats = sorted(min_rationales, key=lambda x: x.P, reverse=True)
-            print(f'{smiles},{score:.3f},{rats[0].smiles},{rats[0].P:.3f}')
+            print(f"{smiles},{score:.3f},{rats[0].smiles},{rats[0].P:.3f}")
+
+
+@timeit()
+def interpret_to_file(
+    args: InterpretArgs, output_dir: str, visualise_smiles: bool
+) -> None:
+    """
+    Runs interpretation of a Chemprop model using the Monte Carlo Tree Search algorithm.
+
+    :param args: A :class:`~chemprop.args.InterpretArgs` object containing arguments for interpretation.
+
+    :output_file: path to a .csv file where the results are to be written
+    """
+
+    if args.number_of_molecules != 1:
+        raise ValueError(
+            "Interpreting is currently only available for single-molecule models."
+        )
+
+    global C_PUCT, MIN_ATOMS
+
+    chemprop_model = ChempropModel(args)
+
+    def scoring_function(smiles: List[str]) -> List[float]:
+        return chemprop_model(smiles)[:, args.property_id - 1]
+
+    C_PUCT = args.c_puct
+    MIN_ATOMS = args.min_atoms
+
+    all_smiles = get_smiles(path=args.data_path, smiles_columns=args.smiles_columns)
+    header = get_header(path=args.data_path)
+
+    property_name = (
+        header[args.property_id] if len(header) > args.property_id else "score"
+    )
+
+    # Checking if output_dir arg is an absolute path. If not, make it so:
+    output_dir = (
+        pathlib.Path(output_dir)
+        if output_dir.is_absolute()
+        else str(pathlib.Path(output_dir).absolute())
+    )
+
+    output_file = pathlib.Path(path_join(output_dir, "interpret.csv"))
+
+    output_file = (
+        pathlib.Path(output_file)
+        if output_file.is_absolute()
+        else str(pathlib.Path(output_file).absolute())
+    )
+
+    if visualise_smiles:
+        with open(output_file, "w") as f:
+            f.write(f"smiles,{property_name},rationale,rationale_score\n")
+
+            counter = 0
+
+            for smiles in all_smiles:
+                score = scoring_function([smiles])[0]
+                if score > args.prop_delta:
+                    rationales = mcts(
+                        smiles=smiles[0],
+                        scoring_function=scoring_function,
+                        n_rollout=args.rollout,
+                        max_atoms=args.max_atoms,
+                        prop_delta=args.prop_delta,
+                    )
+                else:
+                    rationales = []
+
+                if len(rationales) == 0:
+                    f.write(f"{smiles},{score:.3f},,\n")
+                else:
+                    min_size = min(len(x.atoms) for x in rationales)
+                    min_rationales = [x for x in rationales if len(x.atoms) == min_size]
+                    rats = sorted(min_rationales, key=lambda x: x.P, reverse=True)
+                    f.write(f"{smiles},{score:.3f},{rats[0].smiles},{rats[0].P:.3f}\n")
+                    mol = visualise_smiles.get_mol(smiles[0])
+                    submol = visualise_smiles.get_mol(rats[0].smiles)
+                    matches = visualise_smiles.find_mathches_one(mol, submol)
+                    atomset = list(matches[0])
+                    visualise_smiles.get_image(
+                        mol, output_dir, f"smiles-{counter}.pdf", atomset
+                    )
+
+                counter += 1
+    else:
+        with open(output_file, "w") as f:
+            f.write(f"smiles,{property_name},rationale,rationale_score\n")
+
+            for smiles in all_smiles:
+                score = scoring_function([smiles])[0]
+                if score > args.prop_delta:
+                    rationales = mcts(
+                        smiles=smiles[0],
+                        scoring_function=scoring_function,
+                        n_rollout=args.rollout,
+                        max_atoms=args.max_atoms,
+                        prop_delta=args.prop_delta,
+                    )
+                else:
+                    rationales = []
+
+                if len(rationales) == 0:
+                    f.write(f"{smiles},{score:.3f},,\n")
+                else:
+                    min_size = min(len(x.atoms) for x in rationales)
+                    min_rationales = [x for x in rationales if len(x.atoms) == min_size]
+                    rats = sorted(min_rationales, key=lambda x: x.P, reverse=True)
+                    f.write(f"{smiles},{score:.3f},{rats[0].smiles},{rats[0].P:.3f}\n")
 
 
 def chemprop_interpret() -> None:

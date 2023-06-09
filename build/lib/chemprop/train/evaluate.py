@@ -111,8 +111,6 @@ def evaluate_predictions(preds: List[List[float]],
                     tpr = tpr.tolist()
                     auc_value = auc(fpr, tpr)
                     results[metric].append(auc_value)
-                    # plot_data = pd.DataFrame({"fpr": fpr, "tpr": tpr, "auc_value": auc_value})
-                    # plot_data.to_csv(os.path.join(args.save_dir,f"roc_curve_{i}.csv"), index=False)
                 else:
                     results[metric].append(metric_func(valid_targets[i], valid_preds[i]))
 

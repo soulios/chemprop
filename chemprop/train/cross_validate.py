@@ -15,6 +15,7 @@ from .run_training import run_training
 from chemprop.args import TrainArgs
 from chemprop.constants import TEST_SCORES_FILE_NAME, TRAIN_LOGGER_NAME
 from chemprop.data import get_data, get_task_names, MoleculeDataset, validate_dataset_type
+from chemprop.data.utils import calculate_average_n_atoms
 from chemprop.utils import create_logger, makedirs, timeit, multitask_mean
 from chemprop.features import set_extra_atom_fdim, set_extra_bond_fdim, set_explicit_h, set_adding_hs, set_keeping_atom_map, set_reaction, reset_featurization_parameters
 
@@ -80,6 +81,7 @@ def cross_validate(args: TrainArgs,
         skip_none_targets=True,
         data_weights_path=args.data_weights_path
     )
+    # avg_n_atoms, std_n_atoms = calculate_average_n_atoms(data)
     validate_dataset_type(data, dataset_type=args.dataset_type)
     args.features_size = data.features_size()
 
@@ -112,7 +114,6 @@ def cross_validate(args: TrainArgs,
         args.save_dir = os.path.join(save_dir, f'fold_{fold_num}')
         makedirs(args.save_dir)
         data.reset_features_and_targets()
-
         # If resuming experiment, load results from trained models
         test_scores_path = os.path.join(args.save_dir, 'test_scores.json')
         if args.resume_experiment and os.path.exists(test_scores_path):
@@ -136,15 +137,17 @@ def cross_validate(args: TrainArgs,
         color_dict = {}
         metrics = set(scoresdf['metric'])
         plt.clf()
-        for i, metric in enumerate(metrics):
+        metrics_to_plot = ['auc', 'binary_cross_entropy']
+        for i, metric in enumerate(metrics_to_plot):
             color_dict[metric] = colors_list[i % len(colors_list)]
         for (metric, set_), group in grouped:
-            plt.plot(group["epoch"], group["score"], label=f"{set_} {metric}",
-                     linestyle=line_styles[set_], color=color_dict[metric])
-            plt.xlabel("epoch")
-            plt.ylabel("metric score")
-            plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-            plt.savefig(f"{args.save_dir}/scores_and_metrics_fold_{fold_num}.png")
+            if metric in metrics_to_plot:
+                plt.plot(group["epoch"], group["score"], label=f"{set_} {metric}",
+                         linestyle=line_styles[set_], color=color_dict[metric])
+                plt.xlabel("epoch")
+                plt.ylabel("metric score")
+                plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+                plt.savefig(f"{args.save_dir}/scores_and_metrics_fold_{fold_num}.png")
 
     all_scores = dict(all_scores)
 

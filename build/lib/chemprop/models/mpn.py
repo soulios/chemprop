@@ -7,15 +7,15 @@ import torch
 import torch.nn as nn
 
 from chemprop.args import TrainArgs
-from chemprop.features import BatchMolGraph, get_atom_fdim, get_bond_fdim, mol2graph
+from chemprop.features import BatchMolGraph,MolGraph, get_atom_fdim, get_bond_fdim, mol2graph
 from chemprop.nn_utils import index_select_ND, get_activation_function
-
+from scipy.stats import truncnorm, norm
 
 class MPNEncoder(nn.Module):
     """An :class:`MPNEncoder` is a message passing neural network for encoding a molecule."""
 
     def __init__(self, args: TrainArgs, atom_fdim: int, bond_fdim: int, hidden_size: int = None,
-                 bias: bool = None, depth: int = None):
+                 bias: bool = None, depth: int = None, dynamic_depth: str = None):
         """
         :param args: A :class:`~chemprop.args.TrainArgs` object containing model arguments.
         :param atom_fdim: Atom feature vector dimension.
@@ -37,7 +37,7 @@ class MPNEncoder(nn.Module):
         self.aggregation = args.aggregation
         self.aggregation_norm = args.aggregation_norm
         self.is_atom_bond_targets = args.is_atom_bond_targets
-
+        self.dynamic_depth = dynamic_depth or args.dynamic_depth
         # Dropout
         self.dropout = nn.Dropout(args.dropout)
 
@@ -115,9 +115,18 @@ class MPNEncoder(nn.Module):
         else:
             input = self.W_i(f_bonds)  # num_bonds x hidden_size
         message = self.act_func(input)  # num_bonds x hidden_size
-
-        # Message passing
-        for depth in range(self.depth - 1):
+        if self.dynamic_depth == 'truncnorm':
+            mu = self.depth
+            sigma = 1
+            lower = mu - 3 * sigma
+            upper = mu + 3 * sigma
+            X = stats.truncnorm((lower - mu) / sigma, (upper - mu) / sigma, loc=mu, scale=sigma)
+            depth = int(X.rvs(1))
+        elif self.dynamic_depth == 'uniform':
+            depth = np.random.randint(self.depth - 3, self.depth + 3)
+        else:
+            depth = self.depth
+        for depth in range(depth-1):
             if self.undirected:
                 message = (message + message[b2revb]) / 2
 

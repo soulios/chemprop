@@ -297,7 +297,6 @@ def map_reac_to_prod(mol_reac: Chem.Mol, mol_prod: Chem.Mol):
             only_reac_ids.append(atom.GetIdx())
     return reac_id_to_prod_id, only_prod_ids, only_reac_ids
 
-
 class MolGraph:
     """
     A :class:`MolGraph` represents the graph structure and featurization of a single molecule.
@@ -338,7 +337,7 @@ class MolGraph:
         self.is_explicit_h = is_explicit_h(self.is_mol)
         self.is_adding_hs = is_adding_hs(self.is_mol)
         self.reaction_mode = reaction_mode()
-        
+
         # Convert SMILES to RDKit molecule if necessary
         if type(mol) == str:
             if self.is_reaction:

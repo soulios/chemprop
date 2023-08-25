@@ -16,7 +16,7 @@ from chemprop.data import set_cache_mol, empty_cache
 from chemprop.features import get_available_features_generators
 
 Metric = Literal[
-    'auc', 'prc-auc', 'roc-auc', 'rmse', 'mae', 'mse', 'r2', 'accuracy', 'cross_entropy', 'binary_cross_entropy', 'sid', 'wasserstein', 'f1', 'mcc', 'bounded_rmse', 'bounded_mae', 'bounded_mse', 'recall','precision', 'specificity', 'cfm']
+    'auc', 'prc-auc', 'roc-auc', 'rmse', 'mae', 'mse', 'r2', 'accuracy', 'cross_entropy', 'binary_cross_entropy', 'sid', 'wasserstein', 'f1', 'mcc', 'bounded_rmse', 'bounded_mae', 'bounded_mse', 'recall','precision', 'specificity', 'cfm', 'balanced_accuracy']
 
 
 def get_checkpoint_paths(checkpoint_path: Optional[str] = None,
@@ -274,7 +274,7 @@ class TrainArgs(CommonArgs):
     split_type: Literal[
         'random', 'scaffold_balanced', 'predetermined', 'crossval', 'cv', 'cv-no-test', 'index_predetermined', 'random_with_repeated_smiles', 'molecular_weight'] = 'random'
     """Method of splitting the data into train/val/test."""
-    split_sizes: List[float] = None
+    split_sizes: List[float] = [0.8, 0.1, 0.1]
     """Split proportions for train/validation/test sets."""
     split_key_molecule: int = 0
     """The index of the key molecule used for splitting when multiple molecules are present and constrained split_type is used, like scaffold_balanced or random_with_repeated_smiles.
@@ -326,7 +326,7 @@ class TrainArgs(CommonArgs):
     Above this number, caching is not used and data loading is parallel.
     Use "inf" to always cache.
     """
-    save_preds: bool = False
+    save_preds: bool = True
     """Whether to save test split predictions during training."""
     resume_experiment: bool = False
     """
@@ -341,7 +341,7 @@ class TrainArgs(CommonArgs):
     """Dimensionality of hidden layers in MPN."""
     depth: int = 3
     """Number of message passing steps."""
-    dynamic_depth: Optional[Literal['uniform', 'truncnorm']] = None
+    dynamic_depth: Optional[Literal['uniform', 'truncnorm','']] = None
     """Sets the depth dynamically"""
     bias_solvent: bool = False
     """Whether to add bias to linear layers for solvent MPN if :code:`reaction_solvent` is True."""
@@ -710,7 +710,9 @@ class TrainArgs(CommonArgs):
 
         for metric in self.metrics:
             if not any([(self.dataset_type == 'classification' and metric in ['auc', 'prc-auc','roc-auc', 'accuracy',
-                                                                              'binary_cross_entropy', 'f1', 'mcc', 'recall', 'specificity','precision', 'cfm']),
+                                                                              'binary_cross_entropy', 'f1', 'mcc',
+                                                                              'recall', 'specificity', 'precision',
+                                                                              'cfm', 'balanced_accuracy']),
                         (self.dataset_type == 'regression' and metric in ['rmse', 'mae', 'mse', 'r2', 'bounded_rmse',
                                                                           'bounded_mae', 'bounded_mse']),
                         (self.dataset_type == 'multiclass' and metric in ['cross_entropy', 'accuracy', 'f1', 'mcc']),
@@ -771,7 +773,7 @@ class TrainArgs(CommonArgs):
         # Validate split size entry and set default values
         if self.split_sizes is None:
             if self.separate_val_path is None and self.separate_test_path is None: # separate data paths are not provided
-                self.split_sizes = [0.8, 0.2, 0.]
+                self.split_sizes = [0.8, 0.1, 0.1]
             elif self.separate_val_path is not None and self.separate_test_path is None: # separate val path only
                 self.split_sizes = [0.8, 0., 0.2]
             elif self.separate_val_path is None and self.separate_test_path is not None: # separate test path only

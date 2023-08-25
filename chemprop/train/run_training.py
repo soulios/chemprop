@@ -10,7 +10,7 @@ import pandas as pd
 from tensorboardX import SummaryWriter
 import torch
 from tqdm import trange
-from torch.optim.lr_scheduler import ExponentialLR
+from torch.optim.lr_scheduler import ExponentialLR, CosineAnnealingWarmRestarts
 
 from .evaluate import evaluate, evaluate_predictions
 from .predict import predict
@@ -296,7 +296,7 @@ def run_training(args: TrainArgs,
 
         # Learning rate schedulers
         scheduler = build_lr_scheduler(optimizer, args)
-
+        # scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=5,T_mult =1,last_epoch =-1, eta_min=0, verbose=True)
         # Run training
         best_score = float('inf') if args.minimize_score else -float('inf')
         best_epoch, n_iter = 0, 0
@@ -316,6 +316,8 @@ def run_training(args: TrainArgs,
                 writer=writer
             )
             if isinstance(scheduler, ExponentialLR):
+                scheduler.step()
+            elif isinstance(scheduler, CosineAnnealingWarmRestarts):
                 scheduler.step()
 
             training_scores = evaluate(
@@ -388,7 +390,6 @@ def run_training(args: TrainArgs,
         # Evaluate on test set using model with best validation score
         info(f'Model {model_idx} best validation {args.metric} = {best_score:.6f} on epoch {best_epoch}')
         model = load_checkpoint(os.path.join(save_dir, MODEL_FILE_NAME), device=args.device, logger=logger)
-
         if empty_test_set:
             info(f'Model {model_idx} provided with no test set, no metric evaluation will be performed.')
         else:
@@ -480,6 +481,7 @@ def run_training(args: TrainArgs,
                 test_preds_dataframe[bond_target] = values
         else:
             for i, task_name in enumerate(args.task_names):
+                test_preds_dataframe[task_name + '_true'] = [label[i] for label in test_targets]
                 test_preds_dataframe[task_name] = [pred[i] for pred in avg_test_preds]
 
         test_preds_dataframe.to_csv(os.path.join(args.save_dir, 'test_preds.csv'), index=False)

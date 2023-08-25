@@ -462,7 +462,6 @@ def get_data(path: str,
         gt_targets, lt_targets = get_inequality_targets(path=path, target_columns=target_columns)
     else:
         gt_targets, lt_targets = None, None
-    print("000000000000000000")
     # Load data
     with open(path) as f:
         reader = csv.DictReader(f)
@@ -1002,7 +1001,7 @@ def calculate_average_n_atoms(data: MoleculeDataset) -> float:
     Calculates the average number of atoms in a molecule dataset.
 
     :param data_path: A MoleculeDataset instance.
-    :return: The average number of atoms.
+    :return: The average number of atoms.scaffold_balanced
     """
     n_atoms_list = [len(mol.GetAtoms()) for datapoint in data for mol in datapoint.mol]
 

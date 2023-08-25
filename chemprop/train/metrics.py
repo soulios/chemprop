@@ -7,7 +7,8 @@ import numpy as np
 import torch.nn as nn
 import csv
 from sklearn.metrics import auc, mean_absolute_error, mean_squared_error, precision_recall_curve, r2_score,\
-    roc_auc_score, accuracy_score, log_loss, f1_score, matthews_corrcoef, confusion_matrix
+    roc_auc_score, accuracy_score, log_loss, f1_score, matthews_corrcoef, confusion_matrix, balanced_accuracy_score
+
 import seaborn as sns
 
 def get_metric_func(metric: str) -> Callable[[Union[List[int], List[float]], List[float]], float]:
@@ -84,12 +85,19 @@ def get_metric_func(metric: str) -> Callable[[Union[List[int], List[float]], Lis
 
     if metric == 'recall':
         return recall
+
     if metric == 'specificity':
         return specificity
+
     if metric == 'confusion_matrix':
         return cfm
+
     if metric == 'precision':
         return precision
+
+    if metric == 'balanced_accuracy':
+        return balanced_accuracy
+
     raise ValueError(f'Metric "{metric}" not supported.')
 
 def precision(targets: List[int], preds: Union[List[float], List[List[float]]], threshold: float = 0.5) -> float:
@@ -116,6 +124,16 @@ def precision(targets: List[int], preds: Union[List[float], List[List[float]]], 
 
     return score
 
+def balanced_accuracy(targets: List[int], preds: List[float]) -> float:
+    """
+    Computes the balanced accuracy.
+
+    :param targets: A list of binary targets.
+    :param preds: A list of prediction probabilities.
+    :return: The computed balanced accuracy.
+    """
+    hard_preds = [1 if t >= 0.5 else 0 for t in preds]
+    return balanced_accuracy_score(targets, hard_preds)
 def prc_auc(targets: List[int], preds: List[float]) -> float:
     """
     Computes the area under the precision-recall curve.

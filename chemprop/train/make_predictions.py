@@ -1,15 +1,13 @@
 from collections import OrderedDict
 import csv
 from typing import List, Optional, Union, Tuple
-import psutil
-import os
 
 import numpy as np
-import pandas as pd
+
 from chemprop.args import PredictArgs, TrainArgs
-from chemprop.data import get_data, get_data_from_smiles, MoleculeDataLoader, MoleculeDataset, StandardScaler,AtomBondScaler
+from chemprop.data import get_data, get_data_from_smiles, MoleculeDataLoader, MoleculeDataset, StandardScaler, AtomBondScaler
 from chemprop.utils import load_args, load_checkpoint, load_scalers, makedirs, timeit, update_prediction_args
-from chemprop.features import set_extra_atom_fdim, set_extra_bond_fdim, set_reaction, set_explicit_h, set_adding_hs, reset_featurization_parameters, set_keeping_atom_map
+from chemprop.features import set_extra_atom_fdim, set_extra_bond_fdim, set_reaction, set_explicit_h, set_adding_hs, set_keeping_atom_map, reset_featurization_parameters
 from chemprop.models import MoleculeModel
 from chemprop.uncertainty import UncertaintyCalibrator, build_uncertainty_calibrator, UncertaintyEstimator, build_uncertainty_evaluator
 from chemprop.multitask_utils import reshape_values
@@ -17,13 +15,13 @@ from chemprop.multitask_utils import reshape_values
 
 def load_model(args: PredictArgs, generator: bool = False):
     """
-    Function to load a model or ensemble of models from file. If generator is True, a generator of the respective model and scaler 
+    Function to load a model or ensemble of models from file. If generator is True, a generator of the respective model and scaler
     objects is returned (memory efficient), else the full list (holding all models in memory, necessary for preloading).
 
     :param args: A :class:`~chemprop.args.PredictArgs` object containing arguments for
                  loading data and a model and making predictions.
     :param generator: A boolean to return a generator instead of a list of models and scalers.
-    :return: A tuple of updated prediction arguments, training arguments, a list or generator object of models, a list or 
+    :return: A tuple of updated prediction arguments, training arguments, a list or generator object of models, a list or
                  generator object of scalers, the number of tasks and their respective names.
     """
     print('Loading training args')
@@ -47,68 +45,54 @@ def load_model(args: PredictArgs, generator: bool = False):
     return args, train_args, models, scalers, num_tasks, task_names
 
 
-@timeit()
-def load_data(args: PredictArgs, smiles: List[List[str]], chunk_size: int = 50):
+def load_data(args: PredictArgs, smiles: List[List[str]]):
     """
     Function to load data from a list of smiles or a file.
 
     :param args: A :class:`~chemprop.args.PredictArgs` object containing arguments for
                  loading data and a model and making predictions.
     :param smiles: A list of list of smiles, or None if data is to be read from file
-    :param chunk_size: The size of the chunks to yield.
-    :return: A generator that yields chunks of a :class:`~chemprop.data.MoleculeDataset` containing valid datapoints,
-             and a dictionary mapping full to valid indices for each chunk.
+    :return: A tuple of a :class:`~chemprop.data.MoleculeDataset` containing all datapoints, a :class:`~chemprop.data.MoleculeDataset` containing only valid datapoints,
+                 a :class:`~chemprop.data.MoleculeDataLoader` and a dictionary mapping full to valid indices.
     """
     print("Loading data")
-
-    if smiles is None:
-        full_data_chunks = pd.read_csv(args.test_path, chunksize=chunk_size)
-        for full_data_chunk in full_data_chunks:
-            smiles_chunk = full_data_chunk[args.smiles_columns].values.tolist()
-            full_data_chunk = get_data_from_smiles(
-                smiles=smiles_chunk,
-                skip_invalid_smiles=False,
-                features_generator=args.features_generator,
-            )
-
-            print("Validating SMILES")
-            full_to_valid_indices = {}
-            valid_index = 0
-            for full_index in range(len(full_data_chunk)):
-                if all(mol is not None for mol in full_data_chunk[full_index].mol):
-                    full_to_valid_indices[full_index] = valid_index
-                    valid_index += 1
-
-            test_data = MoleculeDataset(
-                [full_data_chunk[i] for i in sorted(full_to_valid_indices.keys())]
-            )
-
-            print(f"Test size = {len(test_data):,}")
-
-            yield test_data, full_to_valid_indices
-
-    else:
+    if smiles is not None:
         full_data = get_data_from_smiles(
             smiles=smiles,
             skip_invalid_smiles=False,
             features_generator=args.features_generator,
         )
-
-        print("Validating SMILES")
-        full_to_valid_indices = {}
-        valid_index = 0
-        for full_index in range(len(full_data)):
-            if all(mol is not None for mol in full_data[full_index].mol):
-                full_to_valid_indices[full_index] = valid_index
-                valid_index += 1
-
-        test_data = MoleculeDataset(
-            [full_data[i] for i in sorted(full_to_valid_indices.keys())]
+    else:
+        full_data = get_data(
+            path=args.test_path,
+            smiles_columns=args.smiles_columns,
+            target_columns=[],
+            ignore_columns=[],
+            skip_invalid_smiles=False,
+            args=args,
+            store_row=not args.drop_extra_columns,
         )
 
-        print(f"Test size = {len(test_data):,}")
+    print("Validating SMILES")
+    full_to_valid_indices = {}
+    valid_index = 0
+    for full_index in range(len(full_data)):
+        if all(mol is not None for mol in full_data[full_index].mol):
+            full_to_valid_indices[full_index] = valid_index
+            valid_index += 1
 
-        yield test_data, full_to_valid_indices
+    test_data = MoleculeDataset(
+        [full_data[i] for i in sorted(full_to_valid_indices.keys())]
+    )
+
+    print(f"Test size = {len(test_data):,}")
+
+    # Create data loader
+    test_data_loader = MoleculeDataLoader(
+        dataset=test_data, batch_size=args.batch_size, num_workers=args.num_workers
+    )
+
+    return full_data, test_data, test_data_loader, full_to_valid_indices
 
 
 def set_features(args: PredictArgs, train_args: TrainArgs):
@@ -316,7 +300,7 @@ def predict_and_save(
                         datapoint.row[pred_name + f"_model_{idx}"] = pred
 
         # Save
-        with open(args.preds_path, 'w') as f:
+        with open(args.preds_path, 'w', newline="") as f:
             writer = csv.DictWriter(f, fieldnames=full_data[0].row.keys())
             writer.writeheader()
 
@@ -327,7 +311,7 @@ def predict_and_save(
             print(f"Saving uncertainty evaluations to {args.evaluation_scores_path}")
             if args.dataset_type == "multiclass":
                 task_names = original_task_names
-            with open(args.evaluation_scores_path, "w") as f:
+            with open(args.evaluation_scores_path, "w", newline="") as f:
                 writer = csv.writer(f)
                 writer.writerow(["evaluation_method"] + task_names)
                 for i, evaluation_method in enumerate(args.evaluation_methods):
@@ -353,22 +337,41 @@ def predict_and_save(
 
 @timeit()
 def make_predictions(
-        args: PredictArgs,
-        smiles: List[List[str]] = None,
-        model_objects: Tuple[
-            PredictArgs,
-            TrainArgs,
-            List[MoleculeModel],
-            List[Union[StandardScaler, AtomBondScaler]],
-            int,
-            List[str],
-        ] = None,
-        calibrator: UncertaintyCalibrator = None,
-        return_invalid_smiles: bool = True,
-        return_index_dict: bool = False,
-        return_uncertainty: bool = False,
-        chunk_size: int = 50,
+    args: PredictArgs,
+    smiles: List[List[str]] = None,
+    model_objects: Tuple[
+        PredictArgs,
+        TrainArgs,
+        List[MoleculeModel],
+        List[Union[StandardScaler, AtomBondScaler]],
+        int,
+        List[str],
+    ] = None,
+    calibrator: UncertaintyCalibrator = None,
+    return_invalid_smiles: bool = True,
+    return_index_dict: bool = False,
+    return_uncertainty: bool = False,
 ) -> List[List[Optional[float]]]:
+    """
+    Loads data and a trained model and uses the model to make predictions on the data.
+
+    If SMILES are provided, then makes predictions on smiles.
+    Otherwise makes predictions on :code:`args.test_data`.
+
+    :param args: A :class:`~chemprop.args.PredictArgs` object containing arguments for
+                loading data and a model and making predictions.
+    :param smiles: List of list of SMILES to make predictions on.
+    :param model_objects: Tuple of output of load_model function which can be called separately outside this function. Preloaded model objects should have
+                used the non-generator option for load_model if the objects are to be used multiple times or are intended to be used for calibration as well.
+    :param calibrator: A :class: `~chemprop.uncertainty.UncertaintyCalibrator` object, for use in calibrating uncertainty predictions.
+                Can be preloaded and provided as a function input or constructed within the function from arguments. The models and scalers used
+                to initiate the calibrator must be lists instead of generators if the same calibrator is to be used multiple times or
+                if the same models and scalers objects are also part of the provided model_objects input.
+    :param return_invalid_smiles: Whether to return predictions of "Invalid SMILES" for invalid SMILES, otherwise will skip them in returned predictions.
+    :param return_index_dict: Whether to return the prediction results as a dictionary keyed from the initial data indexes.
+    :param return_uncertainty: Whether to return uncertainty predictions alongside the model value predictions.
+    :return: A list of lists of target predictions. If returning uncertainty, a tuple containing first prediction values then uncertainty estimates.
+    """
     if model_objects:
         (
             args,
@@ -392,11 +395,17 @@ def make_predictions(
 
     set_features(args, train_args)
 
+    # Note: to get the invalid SMILES for your data, use the get_invalid_smiles_from_file or get_invalid_smiles_from_list functions from data/utils.py
+    full_data, test_data, test_data_loader, full_to_valid_indices = load_data(
+        args, smiles
+    )
+
     if args.uncertainty_method is None and (args.calibration_method is not None or args.evaluation_methods is not None):
         if args.dataset_type in ['classification', 'multiclass']:
             args.uncertainty_method = 'classification'
         else:
             raise ValueError('Cannot calibrate or evaluate uncertainty without selection of an uncertainty method.')
+
 
     if calibrator is None and args.calibration_path is not None:
 
@@ -445,20 +454,19 @@ def make_predictions(
             spectra_phase_mask=getattr(train_args, "spectra_phase_mask", None),
         )
 
-    preds = []
-    unc = []
-    for test_data, full_to_valid_indices in load_data(args, smiles, chunk_size):
-        test_data_loader = MoleculeDataLoader(
-            dataset=test_data, batch_size=args.batch_size, num_workers=args.num_workers
-        )
-        chunk_preds, chunk_unc = predict_and_save(
+    # Edge case if empty list of smiles is provided
+    if len(test_data) == 0:
+        preds = [None] * len(full_data)
+        unc = [None] * len(full_data)
+    else:
+        preds, unc = predict_and_save(
             args=args,
             train_args=train_args,
             test_data=test_data,
             task_names=task_names,
             num_tasks=num_tasks,
             test_data_loader=test_data_loader,
-            full_data=test_data,
+            full_data=full_data,
             full_to_valid_indices=full_to_valid_indices,
             models=models,
             scalers=scalers,
@@ -466,13 +474,11 @@ def make_predictions(
             calibrator=calibrator,
             return_invalid_smiles=return_invalid_smiles,
         )
-        preds.extend(chunk_preds)
-        unc.extend(chunk_unc)
 
     if return_index_dict:
         preds_dict = {}
         unc_dict = {}
-        for i in range(len(smiles)):
+        for i in range(len(full_data)):
             if return_invalid_smiles:
                 preds_dict[i] = preds[i]
                 unc_dict[i] = unc[i]
@@ -490,216 +496,6 @@ def make_predictions(
             return preds, unc
         else:
             return preds
-# @timeit()
-# def load_data(args: PredictArgs, smiles: List[List[str]]):
-#     """
-#     Function to load data from a list of smiles or a file.
-#
-#     :param args: A :class:`~chemprop.args.PredictArgs` object containing arguments for
-#                  loading data and a model and making predictions.
-#     :param smiles: A list of list of smiles, or None if data is to be read from file
-#     :return: A tuple of a :class:`~chemprop.data.MoleculeDataset` containing all datapoints, a :class:`~chemprop.data.MoleculeDataset` containing only valid datapoints,
-#                  a :class:`~chemprop.data.MoleculeDataLoader` and a dictionary mapping full to valid indices.
-#     """
-#     print("Loading data")
-#     if smiles is not None:
-#         full_data = get_data_from_smiles(
-#             smiles=smiles,
-#             skip_invalid_smiles=False,
-#             features_generator=args.features_generator,
-#         )
-#     else:
-#         full_data = get_data(
-#             path=args.test_path,
-#             smiles_columns=args.smiles_columns,
-#             target_columns=[],
-#             ignore_columns=[],
-#             skip_invalid_smiles=False,
-#             args=args,
-#             store_row=not args.drop_extra_columns,
-#         )
-#
-#     print("Validating SMILES")
-#     full_to_valid_indices = {}
-#     valid_index = 0
-#     for full_index in range(len(full_data)):
-#         if all(mol is not None for mol in full_data[full_index].mol):
-#             full_to_valid_indices[full_index] = valid_index
-#             valid_index += 1
-#
-#     test_data = MoleculeDataset(
-#         [full_data[i] for i in sorted(full_to_valid_indices.keys())]
-#     )
-#
-#     print(f"Test size = {len(test_data):,}")
-#
-#     # Create data loader
-#     test_data_loader = MoleculeDataLoader(
-#         dataset=test_data, batch_size=args.batch_size, num_workers=args.num_workers
-#     )
-#
-#     return full_data, test_data, test_data_loader, full_to_valid_indices
-# @timeit()
-# def make_predictions(
-#     args: PredictArgs,
-#     smiles: List[List[str]] = None,
-#     model_objects: Tuple[
-#         PredictArgs,
-#         TrainArgs,
-#         List[MoleculeModel],
-#         List[Union[StandardScaler, AtomBondScaler]],
-#         int,
-#         List[str],
-#     ] = None,
-#     calibrator: UncertaintyCalibrator = None,
-#     return_invalid_smiles: bool = True,
-#     return_index_dict: bool = False,
-#     return_uncertainty: bool = False,
-# ) -> List[List[Optional[float]]]:
-#     """
-#     Loads data and a trained model and uses the model to make predictions on the data.
-#
-#     If SMILES are provided, then makes predictions on smiles.
-#     Otherwise makes predictions on :code:`args.test_data`.
-#
-#     :param args: A :class:`~chemprop.args.PredictArgs` object containing arguments for
-#                 loading data and a model and making predictions.
-#     :param smiles: List of list of SMILES to make predictions on.
-#     :param model_objects: Tuple of output of load_model function which can be called separately outside this function. Preloaded model objects should have
-#                 used the non-generator option for load_model if the objects are to be used multiple times or are intended to be used for calibration as well.
-#     :param calibrator: A :class: `~chemprop.uncertainty.UncertaintyCalibrator` object, for use in calibrating uncertainty predictions.
-#                 Can be preloaded and provided as a function input or constructed within the function from arguments. The models and scalers used
-#                 to initiate the calibrator must be lists instead of generators if the same calibrator is to be used multiple times or
-#                 if the same models and scalers objects are also part of the provided model_objects input.
-#     :param return_invalid_smiles: Whether to return predictions of "Invalid SMILES" for invalid SMILES, otherwise will skip them in returned predictions.
-#     :param return_index_dict: Whether to return the prediction results as a dictionary keyed from the initial data indexes.
-#     :param return_uncertainty: Whether to return uncertainty predictions alongside the model value predictions.
-#     :return: A list of lists of target predictions. If returning uncertainty, a tuple containing first prediction values then uncertainty estimates.
-#     """
-#     if model_objects:
-#         (
-#             args,
-#             train_args,
-#             models,
-#             scalers,
-#             num_tasks,
-#             task_names,
-#         ) = model_objects
-#     else:
-#         (
-#             args,
-#             train_args,
-#             models,
-#             scalers,
-#             num_tasks,
-#             task_names,
-#         ) = load_model(args, generator=True)
-#
-#     num_models = len(args.checkpoint_paths)
-#
-#     set_features(args, train_args)
-#
-#     # Note: to get the invalid SMILES for your data, use the get_invalid_smiles_from_file or get_invalid_smiles_from_list functions from data/utils.py
-#     full_data, test_data, test_data_loader, full_to_valid_indices = load_data(
-#         args, smiles
-#     )
-#
-#     if args.uncertainty_method is None and (args.calibration_method is not None or args.evaluation_methods is not None):
-#         if args.dataset_type in ['classification', 'multiclass']:
-#             args.uncertainty_method = 'classification'
-#         else:
-#             raise ValueError('Cannot calibrate or evaluate uncertainty without selection of an uncertainty method.')
-#
-#
-#     if calibrator is None and args.calibration_path is not None:
-#
-#         calibration_data = get_data(
-#             path=args.calibration_path,
-#             smiles_columns=args.smiles_columns,
-#             target_columns=task_names,
-#             args=args,
-#             features_path=args.calibration_features_path,
-#             features_generator=args.features_generator,
-#             phase_features_path=args.calibration_phase_features_path,
-#             atom_descriptors_path=args.calibration_atom_descriptors_path,
-#             bond_descriptors_path=args.calibration_bond_descriptors_path,
-#             max_data_size=args.max_data_size,
-#             loss_function=args.loss_function,
-#         )
-#
-#         calibration_data_loader = MoleculeDataLoader(
-#             dataset=calibration_data,
-#             batch_size=args.batch_size,
-#             num_workers=args.num_workers,
-#         )
-#
-#         if isinstance(models, List) and isinstance(scalers, List):
-#             calibration_models = models
-#             calibration_scalers = scalers
-#         else:
-#             calibration_model_objects = load_model(args, generator=True)
-#             calibration_models = calibration_model_objects[2]
-#             calibration_scalers = calibration_model_objects[3]
-#
-#         calibrator = build_uncertainty_calibrator(
-#             calibration_method=args.calibration_method,
-#             uncertainty_method=args.uncertainty_method,
-#             interval_percentile=args.calibration_interval_percentile,
-#             regression_calibrator_metric=args.regression_calibrator_metric,
-#             calibration_data=calibration_data,
-#             calibration_data_loader=calibration_data_loader,
-#             models=calibration_models,
-#             scalers=calibration_scalers,
-#             num_models=num_models,
-#             dataset_type=args.dataset_type,
-#             loss_function=args.loss_function,
-#             uncertainty_dropout_p=args.uncertainty_dropout_p,
-#             dropout_sampling_size=args.dropout_sampling_size,
-#             spectra_phase_mask=getattr(train_args, "spectra_phase_mask", None),
-#         )
-#
-#     # Edge case if empty list of smiles is provided
-#     if len(test_data) == 0:
-#         preds = [None] * len(full_data)
-#         unc = [None] * len(full_data)
-#     else:
-#         preds, unc = predict_and_save(
-#             args=args,
-#             train_args=train_args,
-#             test_data=test_data,
-#             task_names=task_names,
-#             num_tasks=num_tasks,
-#             test_data_loader=test_data_loader,
-#             full_data=full_data,
-#             full_to_valid_indices=full_to_valid_indices,
-#             models=models,
-#             scalers=scalers,
-#             num_models=num_models,
-#             calibrator=calibrator,
-#             return_invalid_smiles=return_invalid_smiles,
-#         )
-#
-#     if return_index_dict:
-#         preds_dict = {}
-#         unc_dict = {}
-#         for i in range(len(full_data)):
-#             if return_invalid_smiles:
-#                 preds_dict[i] = preds[i]
-#                 unc_dict[i] = unc[i]
-#             else:
-#                 valid_index = full_to_valid_indices.get(i, None)
-#                 if valid_index is not None:
-#                     preds_dict[i] = preds[valid_index]
-#                     unc_dict[i] = unc[valid_index]
-#         if return_uncertainty:
-#             return preds_dict, unc_dict
-#         else:
-#             return preds_dict
-#     else:
-#         if return_uncertainty:
-#             return preds, unc
-#         else:
-#             return preds
 
 
 def chemprop_predict() -> None:

@@ -15,13 +15,13 @@ from chemprop.multitask_utils import reshape_values
 
 def load_model(args: PredictArgs, generator: bool = False):
     """
-    Function to load a model or ensemble of models from file. If generator is True, a generator of the respective model and scaler
+    Function to load a model or ensemble of models from file. If generator is True, a generator of the respective model and scaler 
     objects is returned (memory efficient), else the full list (holding all models in memory, necessary for preloading).
 
     :param args: A :class:`~chemprop.args.PredictArgs` object containing arguments for
                  loading data and a model and making predictions.
     :param generator: A boolean to return a generator instead of a list of models and scalers.
-    :return: A tuple of updated prediction arguments, training arguments, a list or generator object of models, a list or
+    :return: A tuple of updated prediction arguments, training arguments, a list or generator object of models, a list or 
                  generator object of scalers, the number of tasks and their respective names.
     """
     print('Loading training args')
@@ -300,7 +300,7 @@ def predict_and_save(
                         datapoint.row[pred_name + f"_model_{idx}"] = pred
 
         # Save
-        with open(args.preds_path, 'w', newline="") as f:
+        with open(args.preds_path, 'w') as f:
             writer = csv.DictWriter(f, fieldnames=full_data[0].row.keys())
             writer.writeheader()
 
@@ -311,7 +311,7 @@ def predict_and_save(
             print(f"Saving uncertainty evaluations to {args.evaluation_scores_path}")
             if args.dataset_type == "multiclass":
                 task_names = original_task_names
-            with open(args.evaluation_scores_path, "w", newline="") as f:
+            with open(args.evaluation_scores_path, "w") as f:
                 writer = csv.writer(f)
                 writer.writerow(["evaluation_method"] + task_names)
                 for i, evaluation_method in enumerate(args.evaluation_methods):

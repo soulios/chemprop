@@ -37,6 +37,7 @@ class MPNEncoder(nn.Module):
         self.aggregation = args.aggregation
         self.aggregation_norm = args.aggregation_norm
         self.is_atom_bond_targets = args.is_atom_bond_targets
+
         self.dynamic_depth = dynamic_depth or args.dynamic_depth
         # Dropout
         self.dropout = nn.Dropout(args.dropout)
@@ -56,6 +57,7 @@ class MPNEncoder(nn.Module):
         else:
             w_h_input_size = self.hidden_size
 
+        # Shared weight matrix across depths (default)
         self.W_h = nn.Linear(w_h_input_size, self.hidden_size, bias=self.bias)
 
         self.W_o = nn.Linear(self.atom_fdim + self.hidden_size, self.hidden_size)

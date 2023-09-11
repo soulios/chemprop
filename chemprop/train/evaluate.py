@@ -4,6 +4,8 @@ from typing import Dict, List
 import csv
 import numpy as np
 
+import numpy as np
+
 from .predict import predict
 from chemprop.data import MoleculeDataLoader, StandardScaler, AtomBondScaler
 from chemprop.models import MoleculeModel

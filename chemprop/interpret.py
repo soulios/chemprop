@@ -333,9 +333,11 @@ def interpret(args: InterpretArgs) -> None:
 
     property_name = header[args.property_id] if len(header) > args.property_id else 'score'
     print(f'smiles,{property_name},rationale,rationale_score')
-
+    results = []
     for smiles in all_smiles:
         score = scoring_function([smiles])[0]
+        row = {'smiles': smiles, property_name: f"{score:.3f}"}
+
         if score > args.prop_delta:
             rationales = mcts(
                 smiles=smiles[0],
@@ -348,12 +350,35 @@ def interpret(args: InterpretArgs) -> None:
             rationales = []
 
         if len(rationales) == 0:
-            print(f'{smiles},{score:.3f},,')
+            row.update({'rationale': '', 'rationale_score': ''})
         else:
             min_size = min(len(x.atoms) for x in rationales)
             min_rationales = [x for x in rationales if len(x.atoms) == min_size]
             rats = sorted(min_rationales, key=lambda x: x.P, reverse=True)
-            print(f"{smiles},{score:.3f},{rats[0].smiles},{rats[0].P:.3f}")
+            row.update({'rationale': rats[0].smiles, 'rationale_score': f"{rats[0].P:.3f}"})
+
+        results.append(row)
+    return results
+    # for smiles in all_smiles:
+    #     score = scoring_function([smiles])[0]
+    #     if score > args.prop_delta:
+    #         rationales = mcts(
+    #             smiles=smiles[0],
+    #             scoring_function=scoring_function,
+    #             n_rollout=args.rollout,
+    #             max_atoms=args.max_atoms,
+    #             prop_delta=args.prop_delta
+    #         )
+    #     else:
+    #         rationales = []
+    #
+    #     if len(rationales) == 0:
+    #         print(f'{smiles},{score:.3f},,')
+    #     else:
+    #         min_size = min(len(x.atoms) for x in rationales)
+    #         min_rationales = [x for x in rationales if len(x.atoms) == min_size]
+    #         rats = sorted(min_rationales, key=lambda x: x.P, reverse=True)
+    #         print(f"{smiles},{score:.3f},{rats[0].smiles},{rats[0].P:.3f}")
 
 
 @timeit()
@@ -391,11 +416,11 @@ def interpret_to_file(
     )
 
     # Checking if output_dir arg is an absolute path. If not, make it so:
-    output_dir = (
-        pathlib.Path(output_dir)
-        if output_dir.is_absolute()
-        else str(pathlib.Path(output_dir).absolute())
-    )
+    # output_dir = (
+    #     pathlib.Path(output_dir)
+    #     if output_dir.is_absolute()
+    #     else str(pathlib.Path(output_dir).absolute())
+    # )
 
     output_file = pathlib.Path(path_join(output_dir, "interpret.csv"))
 
@@ -431,11 +456,11 @@ def interpret_to_file(
                     min_rationales = [x for x in rationales if len(x.atoms) == min_size]
                     rats = sorted(min_rationales, key=lambda x: x.P, reverse=True)
                     f.write(f"{smiles},{score:.3f},{rats[0].smiles},{rats[0].P:.3f}\n")
-                    mol = visualise_smiles.get_mol(smiles[0])
-                    submol = visualise_smiles.get_mol(rats[0].smiles)
-                    matches = visualise_smiles.find_mathches_one(mol, submol)
+                    mol = visualise.get_mol(smiles[0])
+                    submol = visualise.get_mol(rats[0].smiles)
+                    matches = visualise.find_mathches_one(mol, submol)
                     atomset = list(matches[0])
-                    visualise_smiles.get_image(
+                    visualise.get_image(
                         mol, output_dir, f"smiles-{counter}.pdf", atomset
                     )
 
@@ -464,6 +489,7 @@ def interpret_to_file(
                     min_rationales = [x for x in rationales if len(x.atoms) == min_size]
                     rats = sorted(min_rationales, key=lambda x: x.P, reverse=True)
                     f.write(f"{smiles},{score:.3f},{rats[0].smiles},{rats[0].P:.3f}\n")
+
 
 
 def chemprop_interpret() -> None:

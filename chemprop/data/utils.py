@@ -233,7 +233,60 @@ def get_constraints(path: str,
     
     return constraints_data, raw_constraints_data
 
+def get_smiles_and_extra_columns(path: str,
+                          smiles_columns: Union[str, List[str]] = None,
+                          number_of_molecules: int = 1,
+                          header: bool = True,
+                          flatten: bool = False
+                          ) -> Tuple[List[str], List[List[str]]]:
+    """
+    Returns the SMILES from a data CSV file along with extra column values.
 
+    :param path: Path to a CSV file.
+    :param smiles_columns: A list of the names of the columns containing SMILES.
+                           By default, uses the first `number_of_molecules` columns.
+    :param number_of_molecules: The number of molecules for each data point. Not necessary if
+                                the names of smiles columns are previously processed.
+    :param header: Whether the CSV file contains a header.
+    :param flatten: Whether to flatten the returned SMILES to a list instead of a list of lists.
+    :return: A tuple containing a list of SMILES and a list of lists with extra column values.
+    """
+    if smiles_columns is not None and not header:
+        raise ValueError('If smiles_columns is provided, the CSV file must have a header.')
+
+    smiles_list = []
+    extra_columns_list = []
+
+    with open(path, mode='r', newline='') as f:
+        if header:
+            reader = csv.DictReader(f)
+            if smiles_columns is None or isinstance(smiles_columns, str):
+                smiles_columns = [reader.fieldnames[0]]  # Default to the first column if not specified
+            else:
+                smiles_columns = [col for col in smiles_columns if col in reader.fieldnames]
+            extra_columns_names = [col for col in reader.fieldnames if col not in smiles_columns]
+        else:
+            reader = csv.reader(f)
+            if smiles_columns is None or isinstance(smiles_columns, str):
+                smiles_columns = [0]  # Default to the first column if not specified
+            else:
+                smiles_columns = [int(col) for col in smiles_columns]
+
+        for row in reader:
+            if header:
+                smiles = [row[smiles_column] for smiles_column in smiles_columns]
+                extras = [row[extra_column] for extra_column in extra_columns_names]
+            else:
+                smiles = [row[col] for col in smiles_columns]
+                extras = [row[i] for i in range(len(row)) if i not in smiles_columns]
+
+            if flatten:
+                smiles_list.extend(smiles)
+            else:
+                smiles_list.append(smiles)
+            extra_columns_list.append(extras)
+
+    return smiles_list, extra_columns_list
 def get_smiles(path: str,
                smiles_columns: Union[str, List[str]] = None,
                number_of_molecules: int = 1,
@@ -271,7 +324,6 @@ def get_smiles(path: str,
         smiles = [smile for smiles_list in smiles for smile in smiles_list]
 
     return smiles
-
 
 def filter_invalid_smiles(data: MoleculeDataset) -> MoleculeDataset:
     """

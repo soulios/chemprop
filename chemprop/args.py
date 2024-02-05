@@ -766,7 +766,7 @@ class TrainArgs(CommonArgs):
         # Validate split size entry and set default values
         if self.split_sizes is None:
             if self.separate_val_path is None and self.separate_test_path is None: # separate data paths are not provided
-                self.split_sizes = [0.8, 0.1, 0.1]
+                self.split_sizes = [0.99, 0.005, 0.005]
             elif self.separate_val_path is not None and self.separate_test_path is None: # separate val path only
                 self.split_sizes = [0.8, 0., 0.2]
             elif self.separate_val_path is None and self.separate_test_path is not None: # separate test path only
@@ -984,6 +984,8 @@ class InterpretArgs(CommonArgs):
 
     data_path: str
     """Path to data CSV file."""
+    preds_path: str
+    """Path to CSV or PICKLE file where predictions will be saved."""
     batch_size: int = 500
     """Batch size."""
     property_id: int = 1
@@ -998,6 +1000,7 @@ class InterpretArgs(CommonArgs):
     """Minimum number of atoms in rationale."""
     prop_delta: float = 0.5
     """Minimum score to count as positive."""
+
 
     def process_args(self) -> None:
         super(InterpretArgs, self).process_args()

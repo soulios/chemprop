@@ -1,13 +1,15 @@
 import math
+import csv
 from typing import Callable, Dict, List, Set, Tuple
 
 import numpy as np
+import pandas as pd
 from rdkit import Chem
 
 from chemprop.args import InterpretArgs
-from chemprop.data import get_data_from_smiles, get_header, get_smiles, MoleculeDataLoader, MoleculeDataset
+from chemprop.data import get_data_from_smiles, get_header, get_smiles,get_smiles_and_extra_columns,MoleculeDataLoader, MoleculeDataset
 from chemprop.train import predict
-from chemprop.utils import load_args, load_checkpoint, load_scalers, timeit
+from chemprop.utils import load_args, load_checkpoint, load_scalers, timeit, makedirs
 
 
 MIN_ATOMS = 15
@@ -79,7 +81,7 @@ class MCTSNode:
     """A :class:`MCTSNode` represents a node in a Monte Carlo Tree Search."""
 
     def __init__(self, smiles: str, atoms: List[int], W: float = 0, N: int = 0, P: float = 0) -> None:
-        """
+        """pd
         :param smiles: The SMILES for the substructure at this node.
         :param atoms: A list of atom indices represented by this node.
         :param W: The W value of this node.
@@ -295,39 +297,37 @@ def mcts(smiles: str,
 
 
 @timeit()
-def interpret(args: InterpretArgs) -> None:
+def interpret(args: InterpretArgs, save_to_csv: bool) -> None:
     """
-    Runs interpretation of a Chemprop model using the Monte Carlo Tree Search algorithm.
+    Runs interpretation of a Chemprop model using the Monte Carlo Tree Search algorithm and optionally saves the interpretations to a CSV file.
 
     :param args: A :class:`~chemprop.args.InterpretArgs` object containing arguments for interpretation.
+    :param save_to_csv: A boolean flag indicating whether to save interpretations to a CSV file.
     """
 
     if args.number_of_molecules != 1:
-        raise ValueError(
-            "Interpreting is currently only available for single-molecule models."
-        )
-
-    global C_PUCT, MIN_ATOMS
+        raise ValueError("Interpreting is currently only available for single-molecule models.")
 
     chemprop_model = ChempropModel(args)
 
     def scoring_function(smiles: List[str]) -> List[float]:
         return chemprop_model(smiles)[:, args.property_id - 1]
 
-    C_PUCT = args.c_puct
-    MIN_ATOMS = args.min_atoms
-
-    all_smiles = get_smiles(path=args.data_path, smiles_columns=args.smiles_columns)
+    # Retrieve SMILES and extra columns separately
+    smiles_list, extra_columns_list = get_smiles_and_extra_columns(path=args.data_path, smiles_columns=args.smiles_columns)
     header = get_header(path=args.data_path)
 
+    # Include headers for extra columns
+    extra_column_headers = header[len(smiles_list[0]):]  # Use all columns after SMILES as extra headers
     property_name = header[args.property_id] if len(header) > args.property_id else 'score'
-    print(f'smiles,{property_name},rationale,rationale_score')
 
-    for smiles in all_smiles:
+    interpretations = []
+
+    for smiles, extra_columns in zip(smiles_list, extra_columns_list):
         score = scoring_function([smiles])[0]
         if score > args.prop_delta:
             rationales = mcts(
-                smiles=smiles[0],
+                smiles=smiles,
                 scoring_function=scoring_function,
                 n_rollout=args.rollout,
                 max_atoms=args.max_atoms,
@@ -337,12 +337,23 @@ def interpret(args: InterpretArgs) -> None:
             rationales = []
 
         if len(rationales) == 0:
-            print(f'{smiles},{score:.3f},,')
+            interpretation = extra_columns + [smiles, f'{score:.3f}', '', '']
         else:
             min_size = min(len(x.atoms) for x in rationales)
             min_rationales = [x for x in rationales if len(x.atoms) == min_size]
             rats = sorted(min_rationales, key=lambda x: x.P, reverse=True)
-            print(f'{smiles},{score:.3f},{rats[0].smiles},{rats[0].P:.3f}')
+            interpretation = extra_columns + [smiles, f'{score:.3f}', rats[0].smiles, f'{rats[0].P:.3f}']
+
+        interpretations.append(interpretation)
+        print(','.join(map(str, interpretation)))
+
+    if save_to_csv:
+        makedirs(args.preds_path, isfile=True)
+        with open(args.preds_path, 'w', newline='') as file:
+            writer = csv.writer(file)
+            # Adjust header to include extra columns
+            writer.writerow([extra_column_headers,'smiles', property_name, 'rationale', 'rationale_score'])
+            writer.writerows(interpretations)
 
 
 def chemprop_interpret() -> None:
@@ -350,4 +361,4 @@ def chemprop_interpret() -> None:
 
     This is the entry point for the command line command :code:`chemprop_interpret`.
     """
-    interpret(args=InterpretArgs().parse_args())
+    interpret(args=InterpretArgs().parse_args(), save_to_csv=True)

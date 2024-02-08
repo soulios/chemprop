@@ -768,7 +768,7 @@ class TrainArgs(CommonArgs):
         # Validate split size entry and set default values
         if self.split_sizes is None:
             if self.separate_val_path is None and self.separate_test_path is None: # separate data paths are not provided
-                self.split_sizes = [0.99, 0.005, 0.005]
+                self.split_sizes = [0.8, 0.1, 0.1]
             elif self.separate_val_path is not None and self.separate_test_path is None: # separate val path only
                 self.split_sizes = [0.8, 0., 0.2]
             elif self.separate_val_path is None and self.separate_test_path is not None: # separate test path only

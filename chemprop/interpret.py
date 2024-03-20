@@ -295,7 +295,6 @@ def mcts(smiles: str,
 
     return rationales
 
-
 @timeit()
 def interpret(args: InterpretArgs, save_to_csv: bool) -> None:
     """
@@ -310,25 +309,34 @@ def interpret(args: InterpretArgs, save_to_csv: bool) -> None:
 
     chemprop_model = ChempropModel(args)
 
-    def scoring_function(smiles: List[str]) -> List[float]:
-        return chemprop_model(smiles)[:, args.property_id - 1]
+    def scoring_function(smiles: List[str]) -> List[List[float]]:
+        """
+        Computes the scores for multiple properties for each SMILES string.
 
-    # Retrieve SMILES and extra columns separately
+        :param smiles: A list of SMILES strings for which to predict properties.
+        :return: A list of lists of floats, where each inner list contains scores for the specified properties for a single SMILES string.
+        """
+        all_scores = chemprop_model(smiles)
+        # Extract scores for specified properties. Adjust index by -1 for 0-based indexing.
+        scores = [[all_scores[i][j - 1] for j in args.property_id] for i in range(len(all_scores))]
+        return scores
+
     smiles_list, extra_columns_list = get_smiles_and_extra_columns(path=args.data_path, smiles_columns=args.smiles_columns)
     header = get_header(path=args.data_path)
 
     # Include headers for extra columns
     extra_column_headers = header[len(smiles_list[0]):]  # Use all columns after SMILES as extra headers
-    property_name = header[args.property_id] if len(header) > args.property_id else 'score'
-
+    # property_names = [header[i] if len(header) > i else f'score_{i}' for i in args.property_id]
+    property_names = chemprop_model.train_args.task_names
+    property_names = [property_names[i-1] for i in args.property_id]
     interpretations = []
 
     for smiles, extra_columns in zip(smiles_list, extra_columns_list):
-        score = scoring_function([smiles])[0]
-        if score > args.prop_delta:
+        scores = scoring_function([smiles])[0]
+        if any(score > args.prop_delta for score in scores):
             rationales = mcts(
-                smiles=smiles,
-                scoring_function=scoring_function,
+                smiles=smiles[0],
+                scoring_function=lambda x: scoring_function(x)[0],  # Adapt to expected scoring function signature
                 n_rollout=args.rollout,
                 max_atoms=args.max_atoms,
                 prop_delta=args.prop_delta
@@ -336,13 +344,9 @@ def interpret(args: InterpretArgs, save_to_csv: bool) -> None:
         else:
             rationales = []
 
-        if len(rationales) == 0:
-            interpretation = extra_columns + [smiles, f'{score:.3f}', '', '']
-        else:
-            min_size = min(len(x.atoms) for x in rationales)
-            min_rationales = [x for x in rationales if len(x.atoms) == min_size]
-            rats = sorted(min_rationales, key=lambda x: x.P, reverse=True)
-            interpretation = extra_columns + [smiles, f'{score:.3f}', rats[0].smiles, f'{rats[0].P:.3f}']
+        rationale_smiles = rationales[0].smiles if len(rationales) > 0 else ''
+        rationale_score = f'{rationales[0].P:.3f}' if len(rationales) > 0 else ''
+        interpretation = extra_columns + [smiles, *scores, rationale_smiles, rationale_score]
 
         interpretations.append(interpretation)
         print(','.join(map(str, interpretation)))
@@ -351,9 +355,68 @@ def interpret(args: InterpretArgs, save_to_csv: bool) -> None:
         makedirs(args.preds_path, isfile=True)
         with open(args.preds_path, 'w', newline='') as file:
             writer = csv.writer(file)
-            # Adjust header to include extra columns
-            writer.writerow([extra_column_headers,'smiles', property_name, 'rationale', 'rationale_score'])
+            writer.writerow(extra_column_headers + ['smiles'] + property_names + ['rationale', 'rationale_score'])
             writer.writerows(interpretations)
+
+
+# @timeit()
+# def interpret(args: InterpretArgs, save_to_csv: bool) -> None:
+#     """
+#     Runs interpretation of a Chemprop model using the Monte Carlo Tree Search algorithm and optionally saves the interpretations to a CSV file.
+#
+#     :param args: A :class:`~chemprop.args.InterpretArgs` object containing arguments for interpretation.
+#     :param save_to_csv: A boolean flag indicating whether to save interpretations to a CSV file.
+#     """
+#
+#     if args.number_of_molecules != 1:
+#         raise ValueError("Interpreting is currently only available for single-molecule models.")
+#
+#     chemprop_model = ChempropModel(args)
+#
+#     def scoring_function(smiles: List[str]) -> List[float]:
+#         return chemprop_model(smiles)[:, args.property_id - 1]
+#
+#     # Retrieve SMILES and extra columns separately
+#     smiles_list, extra_columns_list = get_smiles_and_extra_columns(path=args.data_path, smiles_columns=args.smiles_columns)
+#     header = get_header(path=args.data_path)
+#
+#     # Include headers for extra columns
+#     extra_column_headers = header[len(smiles_list[0]):]  # Use all columns after SMILES as extra headers
+#     property_name = header[args.property_id] if len(header) > args.property_id else 'score'
+#
+#     interpretations = []
+#
+#     for smiles, extra_columns in zip(smiles_list, extra_columns_list):
+#         score = scoring_function([smiles])[0]
+#         if score > args.prop_delta:
+#             rationales = mcts(
+#                 smiles=smiles,
+#                 scoring_function=scoring_function,
+#                 n_rollout=args.rollout,
+#                 max_atoms=args.max_atoms,
+#                 prop_delta=args.prop_delta
+#             )
+#         else:
+#             rationales = []
+#
+#         if len(rationales) == 0:
+#             interpretation = extra_columns + [smiles, f'{score:.3f}', '', '']
+#         else:
+#             min_size = min(len(x.atoms) for x in rationales)
+#             min_rationales = [x for x in rationales if len(x.atoms) == min_size]
+#             rats = sorted(min_rationales, key=lambda x: x.P, reverse=True)
+#             interpretation = extra_columns + [smiles, f'{score:.3f}', rats[0].smiles, f'{rats[0].P:.3f}']
+#
+#         interpretations.append(interpretation)
+#         print(','.join(map(str, interpretation)))
+#
+#     if save_to_csv:
+#         makedirs(args.preds_path, isfile=True)
+#         with open(args.preds_path, 'w', newline='') as file:
+#             writer = csv.writer(file)
+#             # Adjust header to include extra columns
+#             writer.writerow([extra_column_headers,'smiles', property_name, 'rationale', 'rationale_score'])
+#             writer.writerows(interpretations)
 
 
 def chemprop_interpret() -> None:

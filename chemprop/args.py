@@ -255,6 +255,8 @@ class TrainArgs(CommonArgs):
     Name of the columns containing target values.
     By default, uses all columns except the SMILES column and the :code:`ignore_columns`.
     """
+    wabTracking: bool = False
+    """Whether to track the weights and biases experiment."""
     ignore_columns: List[str] = None
     """Name of the columns to ignore when :code:`target_columns` is not provided."""
     dataset_type: Literal['regression', 'classification', 'multiclass', 'spectra']
@@ -990,7 +992,7 @@ class InterpretArgs(CommonArgs):
     """Path to CSV or PICKLE file where predictions will be saved."""
     batch_size: int = 500
     """Batch size."""
-    property_id: int = 1
+    property_id: List[int] = [1,2,3]
     """Index of the property of interest in the trained model."""
     rollout: int = 20
     """Number of rollout steps."""

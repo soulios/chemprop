@@ -361,6 +361,64 @@ def interpret(args: InterpretArgs, save_to_csv: bool) -> None:
 
 # @timeit()
 # def interpret(args: InterpretArgs, save_to_csv: bool) -> None:
+#     if args.number_of_molecules != 1:
+#         raise ValueError("Interpreting is currently only available for single-molecule models.")
+#
+#     chemprop_model = ChempropModel(args)
+#
+#     def scoring_function(smiles: List[str]) -> List[List[float]]:
+#         all_scores = chemprop_model(smiles)
+#         scores = [[all_scores[i][j - 1] for j in args.property_id] for i in range(len(all_scores))]
+#         return scores
+#
+#     smiles_list, extra_columns_list = get_smiles_and_extra_columns(path=args.data_path,
+#                                                                    smiles_columns=args.smiles_columns)
+#     header = get_header(path=args.data_path)
+#
+#     extra_column_headers = header[len(smiles_list[0]):]
+#     property_names = chemprop_model.train_args.task_names
+#     property_names = [property_names[i - 1] for i in args.property_id]
+#
+#     if save_to_csv:
+#         makedirs(args.preds_path, isfile=True)
+#         with open(args.preds_path, 'w', newline='') as file:
+#             writer = csv.writer(file)
+#             writer.writerow(extra_column_headers + ['smiles'] + property_names + ['rationale', 'rationale_score'])
+#
+#     # Process in chunks
+#     for i in range(0, len(smiles_list), 10000):
+#         end = min(i + 10000, len(smiles_list))
+#         chunk_smiles_list = smiles_list[i:end]
+#         chunk_extra_columns_list = extra_columns_list[i:end]
+#
+#         interpretations = []
+#         for smiles, extra_columns in zip(chunk_smiles_list, chunk_extra_columns_list):
+#             scores = scoring_function([smiles])[0]
+#             if any(score > args.prop_delta for score in scores):
+#                 rationales = mcts(
+#                     smiles=smiles[0],
+#                     scoring_function=lambda x: scoring_function(x)[0],
+#                     n_rollout=args.rollout,
+#                     max_atoms=args.max_atoms,
+#                     prop_delta=args.prop_delta
+#                 )
+#             else:
+#                 rationales = []
+#
+#             rationale_smiles = rationales[0].smiles if len(rationales) > 0 else ''
+#             rationale_score = f'{rationales[0].P:.3f}' if len(rationales) > 0 else ''
+#             interpretation = extra_columns + [smiles, *scores, rationale_smiles, rationale_score]
+#
+#             interpretations.append(interpretation)
+#             print(','.join(map(str, interpretation)))
+#
+#         if save_to_csv:
+#             with open(args.preds_path, 'a', newline='') as file:
+#                 writer = csv.writer(file)
+#                 writer.writerows(interpretations)
+
+# @timeit()
+# def interpret(args: InterpretArgs, save_to_csv: bool) -> None:
 #     """
 #     Runs interpretation of a Chemprop model using the Monte Carlo Tree Search algorithm and optionally saves the interpretations to a CSV file.
 #
